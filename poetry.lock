@@ -1122,18 +1122,18 @@ files = [
 
 [[package]]
 name = "datafusion"
-version = "46.0.0"
+version = "47.0.0"
 description = "Build and run queries against data"
 optional = false
 python-versions = ">=3.9"
 groups = ["dev"]
 files = [
-    {file = "datafusion-46.0.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:4517b6d2d35fb7d9044519a9ef3388ed504d82cbbaaba4bf3fef1da673c8357a"},
-    {file = "datafusion-46.0.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:2770a1606a9d0f1f9d64648e3777413bbcff0bee7b9a1ccb067f989e3a1c7b96"},
-    {file = "datafusion-46.0.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:bc115441c17036ddd730bb6281ecc88269973691ec51279be173bd3cc3e5d219"},
-    {file = "datafusion-46.0.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:f40d9eeaa0ac4776bf0cea943228c945ec5bae8032263ad7871c8d82e8a2725a"},
-    {file = "datafusion-46.0.0-cp39-abi3-win_amd64.whl", hash = "sha256:2b783b3fd8ee91bedfcdb353a3e700d65b61552a84e072940f78e0cde461bb98"},
-    {file = "datafusion-46.0.0.tar.gz", hash = "sha256:e8adb6b987068585bc12f63ea51776919b09376833b2412da6cc8ff77d85c553"},
+    {file = "datafusion-47.0.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:ccd83a8e49fb39be06ddfa87023200a9ddc93d181247654ac951fa5720219d08"},
+    {file = "datafusion-47.0.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:43677e6284b165727031aec14d4beaa97296e991960293c61dcb66a3a9ce59b8"},
+    {file = "datafusion-47.0.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d244ed32a2fae7c4dd292a6bfe092cc94b3b86c600eddb7d633609043d406bae"},
+    {file = "datafusion-47.0.0-cp39-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:b3304ec63fb89f27e4280226807fd033ed7f0ea36d2d69fecf68f257d975c24d"},
+    {file = "datafusion-47.0.0-cp39-abi3-win_amd64.whl", hash = "sha256:73c5d056908185c77eedcaea43a5a8ab5e1c2e747a3e34d36d3625e09a3dc2af"},
+    {file = "datafusion-47.0.0.tar.gz", hash = "sha256:19a6976731aa96a6f6e264c390c64b9e32051e866366bd69450bc77e67bc91b1"},
 ]
 
 [package.dependencies]
@@ -1613,19 +1613,19 @@ gcsfuse = ["fusepy"]
 
 [[package]]
 name = "getdaft"
-version = "0.4.16"
+version = "0.4.18"
 description = "Distributed Dataframes for Multimodal Data"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
 markers = "extra == \"daft\""
 files = [
-    {file = "getdaft-0.4.16-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:2ae85aa3f7ff95afa366e30b2645db05dc77fb1cf1b31aca4617062ed7bfd808"},
-    {file = "getdaft-0.4.16-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:410a3fa24404ce302fd7278184fcda901393095a03b3ff35e7fb2ac06207c383"},
-    {file = "getdaft-0.4.16-cp39-abi3-manylinux_2_24_aarch64.whl", hash = "sha256:45f816ce0dc897c4a69a41f5b8bc241192dadfe63abcc6dd0d6a61c85bf0375f"},
-    {file = "getdaft-0.4.16-cp39-abi3-manylinux_2_24_x86_64.whl", hash = "sha256:8ab96334e5447c60d07efe33f59b11f12377aaf5d44d686b76b6733ede28421c"},
-    {file = "getdaft-0.4.16-cp39-abi3-win_amd64.whl", hash = "sha256:9834eefabb5930729e8d0122e2c0af7c908d0f222e0ef2f5b091a40598da0e78"},
-    {file = "getdaft-0.4.16.tar.gz", hash = "sha256:3f407b710000f640e9c790b886615fe677a32b9dcbde3085fe026152f2233785"},
+    {file = "getdaft-0.4.18-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:ef7fd708e230ef7a80afe0b91d2ecc03d5ff3ec78826c5f39ff5a8fb15517ed2"},
+    {file = "getdaft-0.4.18-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:d2ae3a7271eaa6f93e830bea80ea7ded0d2c3814b97b4b615af41e6aac91268b"},
+    {file = "getdaft-0.4.18-cp39-abi3-manylinux_2_24_aarch64.whl", hash = "sha256:626f644af9f16ea77accf80177151fa6817313d596633e46d893ca2b232b1856"},
+    {file = "getdaft-0.4.18-cp39-abi3-manylinux_2_24_x86_64.whl", hash = "sha256:4e5ad35750731499a39c6056620e09ef7f310e1364a7c9d6310341e5f7478ba2"},
+    {file = "getdaft-0.4.18-cp39-abi3-win_amd64.whl", hash = "sha256:def486c781c414b241a7843eb8c54c1ba105795cb14283d5986e395bd0510abc"},
+    {file = "getdaft-0.4.18.tar.gz", hash = "sha256:ff10119147a28cfaad949f1599d9e8317069d07f83098c8d40744c4f10b51398"},
 ]
 
 [package.dependencies]
@@ -1950,15 +1950,15 @@ tests = ["pytest"]
 
 [[package]]
 name = "huggingface-hub"
-version = "0.32.2"
+version = "0.32.3"
 description = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 optional = true
 python-versions = ">=3.8.0"
 groups = ["main"]
 markers = "extra == \"hf\""
 files = [
-    {file = "huggingface_hub-0.32.2-py3-none-any.whl", hash = "sha256:f8fcf14603237eadf96dbe577d30b330f8c27b4a0a31e8f6c94fdc25e021fdb8"},
-    {file = "huggingface_hub-0.32.2.tar.gz", hash = "sha256:64a288b1eadad6b60bbfd50f0e52fd6cfa2ef77ab13c3e8a834a038ae929de54"},
+    {file = "huggingface_hub-0.32.3-py3-none-any.whl", hash = "sha256:e46f7ea7fe2b5e5f67cc4e37eb201140091946a314d7c2b134a9673dadd80b6a"},
+    {file = "huggingface_hub-0.32.3.tar.gz", hash = "sha256:752c889ebf3a63cbd39803f6d87ccc135a463bbcb36abfa2faff0ccbf1cec087"},
 ]
 
 [package.dependencies]
@@ -4259,13 +4259,13 @@ files = [
 
 [[package]]
 name = "pyspark"
-version = "3.5.5"
+version = "3.5.6"
 description = "Apache Spark Python API"
 optional = false
 python-versions = ">=3.8"
 groups = ["dev"]
 files = [
-    {file = "pyspark-3.5.5.tar.gz", hash = "sha256:6effc9ce98edf231f4d683fd14f7270629bf8458c628d6a2620ded4bb34f3cb9"},
+    {file = "pyspark-3.5.6.tar.gz", hash = "sha256:f8b1c4360e41ab398c64904fae08740503bcb6bd389457d659fa6d9f2952cc48"},
 ]
 
 [package.dependencies]
@@ -5977,4 +5977,4 @@ zstandard = ["zstandard"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.9.2, !=3.9.7"
-content-hash = "9d4fe56235c1988928b6dc5eebc9374ed92e7d6cb52e5356b21c543196f31bda"
+content-hash = "fb2fa0b2764e8528206e2e401ad35a12b8edf31350d130796d5bb279d8785b58"
