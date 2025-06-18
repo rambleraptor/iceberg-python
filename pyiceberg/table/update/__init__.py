@@ -85,13 +85,16 @@ class UpgradeFormatVersionUpdate(IcebergBaseModel):
     action: Literal["upgrade-format-version"] = Field(default="upgrade-format-version")
     format_version: int = Field(alias="format-version")
 
+
 class AddEncryptedKeyUpdate(IcebergBaseModel):
     action: Literal["add-encryption-key"] = Field(default="add-encryption-key")
     key: EncryptedKey = Field(alias="key")
 
+
 class RemoveEncryptedKeyUpdate(IcebergBaseModel):
     action: Literal["remove-encryption-key"] = Field(default="remove-encryption-key")
     key_id: str = Field(alias="key-id")
+
 
 class AddSchemaUpdate(IcebergBaseModel):
     action: Literal["add-schema"] = Field(default="add-schema")
@@ -591,6 +594,7 @@ def _(update: RemoveStatisticsUpdate, base_metadata: TableMetadata, context: _Ta
 
     return base_metadata.model_copy(update={"statistics": statistics})
 
+
 @_apply_table_update.register(AddEncryptedKeyUpdate)
 def _(update: AddEncryptedKeyUpdate, base_metadata: TableMetadata, context: _TableMetadataUpdateContext) -> TableMetadata:
     context.add_update(update)
@@ -599,6 +603,7 @@ def _(update: AddEncryptedKeyUpdate, base_metadata: TableMetadata, context: _Tab
         raise ValueError("Cannot add encryption keys to Iceberg v1 or v2 tables")
 
     return base_metadata.model_copy(update={"encryption_keys": base_metadata.encryption_keys + [update.key]})
+
 
 def update_table_metadata(
     base_metadata: TableMetadata,
