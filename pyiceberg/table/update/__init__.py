@@ -28,6 +28,7 @@ from pydantic import Field, field_validator, model_validator
 from pyiceberg.exceptions import CommitFailedException
 from pyiceberg.partitioning import PARTITION_FIELD_ID_START, PartitionSpec
 from pyiceberg.schema import Schema
+from pyiceberg.table.encryption import EncryptedKey
 from pyiceberg.table.metadata import SUPPORTED_TABLE_FORMAT_VERSION, TableMetadata, TableMetadataUtil
 from pyiceberg.table.refs import MAIN_BRANCH, SnapshotRef
 from pyiceberg.table.snapshots import (
@@ -84,6 +85,13 @@ class UpgradeFormatVersionUpdate(IcebergBaseModel):
     action: Literal["upgrade-format-version"] = Field(default="upgrade-format-version")
     format_version: int = Field(alias="format-version")
 
+class AddEncryptedKeyUpdate(IcebergBaseModel):
+    action: Literal["add-encryption-key"] = Field(default="add-encryption-key")
+    key: EncryptedKey = Field(alias="key")
+
+class RemoveEncryptedKeyUpdate(IcebergBaseModel):
+    action: Literal["remove-encryption-key"] = Field(default="remove-encryption-key")
+    key_id: str = Field(alias="key-id")
 
 class AddSchemaUpdate(IcebergBaseModel):
     action: Literal["add-schema"] = Field(default="add-schema")
@@ -217,6 +225,8 @@ TableUpdate = Annotated[
         RemovePropertiesUpdate,
         SetStatisticsUpdate,
         RemoveStatisticsUpdate,
+        AddEncryptedKeyUpdate,
+        RemoveEncryptedKeyUpdate,
     ],
     Field(discriminator="action"),
 ]
@@ -581,6 +591,14 @@ def _(update: RemoveStatisticsUpdate, base_metadata: TableMetadata, context: _Ta
 
     return base_metadata.model_copy(update={"statistics": statistics})
 
+@_apply_table_update.register(AddEncryptedKeyUpdate)
+def _(update: AddEncryptedKeyUpdate, base_metadata: TableMetadata, context: _TableMetadataUpdateContext) -> TableMetadata:
+    context.add_update(update)
+
+    if base_metadata.format_version <= 2:
+        raise ValueError("Cannot add encryption keys to Iceberg v1 or v2 tables")
+
+    return base_metadata.model_copy(update={"encryption_keys": base_metadata.encryption_keys + [update.key]})
 
 def update_table_metadata(
     base_metadata: TableMetadata,
