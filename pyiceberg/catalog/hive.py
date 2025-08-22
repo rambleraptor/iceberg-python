@@ -130,6 +130,8 @@ HIVE2_COMPATIBLE_DEFAULT = False
 
 HIVE_KERBEROS_AUTH = "hive.kerberos-authentication"
 HIVE_KERBEROS_AUTH_DEFAULT = False
+HIVE_KERBEROS_SERVICE_NAME = "hive.kerberos-service-name"
+HIVE_KERBEROS_SERVICE_NAME_DEFAULT = "hive"
 
 LOCK_CHECK_MIN_WAIT_TIME = "lock-check-min-wait-time"
 LOCK_CHECK_MAX_WAIT_TIME = "lock-check-max-wait-time"
@@ -149,9 +151,16 @@ class _HiveClient:
     _transport: TTransport
     _ugi: Optional[List[str]]
 
-    def __init__(self, uri: str, ugi: Optional[str] = None, kerberos_auth: Optional[bool] = HIVE_KERBEROS_AUTH_DEFAULT):
+    def __init__(
+        self,
+        uri: str,
+        ugi: Optional[str] = None,
+        kerberos_auth: Optional[bool] = HIVE_KERBEROS_AUTH_DEFAULT,
+        kerberos_service_name: Optional[str] = HIVE_KERBEROS_SERVICE_NAME,
+    ):
         self._uri = uri
         self._kerberos_auth = kerberos_auth
+        self._kerberos_service_name = kerberos_service_name
         self._ugi = ugi.split(":") if ugi else None
         self._transport = self._init_thrift_transport()
 
@@ -161,7 +170,7 @@ class _HiveClient:
         if not self._kerberos_auth:
             return TTransport.TBufferedTransport(socket)
         else:
-            return TTransport.TSaslClientTransport(socket, host=url_parts.hostname, service="hive")
+            return TTransport.TSaslClientTransport(socket, host=url_parts.hostname, service=self._kerberos_service_name)
 
     def _client(self) -> Client:
         protocol = TBinaryProtocol.TBinaryProtocol(self._transport)
@@ -314,6 +323,7 @@ class HiveCatalog(MetastoreCatalog):
                     uri,
                     properties.get("ugi"),
                     property_as_bool(properties, HIVE_KERBEROS_AUTH, HIVE_KERBEROS_AUTH_DEFAULT),
+                    properties.get(HIVE_KERBEROS_SERVICE_NAME, HIVE_KERBEROS_SERVICE_NAME_DEFAULT),
                 )
             except BaseException as e:
                 last_exception = e
@@ -551,6 +561,12 @@ class HiveCatalog(MetastoreCatalog):
                         previous_metadata_location=current_table.metadata_location,
                         metadata_properties=updated_staged_table.properties,
                     )
+                    # Update hive's schema and properties
+                    hive_table.sd = _construct_hive_storage_descriptor(
+                        updated_staged_table.schema(),
+                        updated_staged_table.location(),
+                        property_as_bool(updated_staged_table.properties, HIVE2_COMPATIBLE, HIVE2_COMPATIBLE_DEFAULT),
+                    )
                     open_client.alter_table_with_environment_context(
                         dbname=database_name,
                         tbl_name=table_name,
@@ -635,9 +651,14 @@ class HiveCatalog(MetastoreCatalog):
             ValueError: When from table identifier is invalid.
             NoSuchTableError: When a table with the name does not exist.
             NoSuchNamespaceError: When the destination namespace doesn't exist.
+            TableAlreadyExistsError: When the destination table already exists.
         """
         from_database_name, from_table_name = self.identifier_to_database_and_table(from_identifier, NoSuchTableError)
         to_database_name, to_table_name = self.identifier_to_database_and_table(to_identifier)
+
+        if self.table_exists(to_identifier):
+            raise TableAlreadyExistsError(f"Table already exists: {to_table_name}")
+
         try:
             with self._client as open_client:
                 tbl = open_client.get_table(dbname=from_database_name, tbl_name=from_table_name)
@@ -784,7 +805,7 @@ class HiveCatalog(MetastoreCatalog):
             if removals:
                 for key in removals:
                     if key in parameters:
-                        parameters[key] = None
+                        parameters.pop(key)
                         removed.add(key)
             if updates:
                 for key, value in updates.items():
