@@ -758,6 +758,54 @@ POSITIONAL_DELETE_SCHEMA = Schema(
 )
 
 
+class ManifestListFile:
+    """Represents a manifest list file with optional encryption."""
+
+    def __init__(self, location: str, encryption_key_id: str | None = None) -> None:
+        """Initialize a manifest list file.
+
+        Args:
+            location: The location of the manifest list file.
+            encryption_key_id: The encryption key ID, or None if not encrypted.
+        """
+        self._location = location
+        self._encryption_key_id = encryption_key_id
+
+    @property
+    def location(self) -> str:
+        """Get the manifest list file location.
+
+        Returns:
+            The file location path.
+        """
+        return self._location
+
+    @property
+    def encryption_key_id(self) -> str | None:
+        """Get the encryption key ID.
+
+        Returns:
+            The encryption key ID, or None if not encrypted.
+        """
+        return self._encryption_key_id
+
+    def decrypt_key_metadata(self, encryption_manager: Any) -> bytes | None:
+        """Decrypt and return the manifest list key metadata.
+
+        Args:
+            encryption_manager: The encryption manager to use for decryption.
+
+        Returns:
+            The decrypted key metadata bytes, or None if not encrypted.
+        """
+        if self._encryption_key_id is None:
+            return None
+
+        from pyiceberg.encryption.util import decrypt_manifest_list_key_metadata
+
+        return decrypt_manifest_list_key_metadata(self, encryption_manager)
+
+
 class ManifestFile(Record):
     @classmethod
     def from_args(cls, _table_format_version: TableVersion = DEFAULT_READ_VERSION, **arguments: Any) -> ManifestFile:
@@ -1201,12 +1249,34 @@ class ManifestListWriter(ABC):
     _manifest_files: list[ManifestFile]
     _commit_snapshot_id: int
     _writer: AvroOutputFile[ManifestFile]
+    _encryption_manager: Any | None
+    _encrypted_output_file: Any | None
+    _manifest_list_key_metadata: Any | None
 
-    def __init__(self, format_version: TableVersion, output_file: OutputFile, meta: dict[str, Any]):
+    def __init__(
+        self, format_version: TableVersion, output_file: OutputFile, meta: dict[str, Any], encryption_manager: Any | None = None
+    ):
+        from pyiceberg.encryption import PlaintextEncryptionManager
+        from pyiceberg.encryption.standard_encryption import StandardEncryptionManager
+
         self._format_version = format_version
-        self._output_file = output_file
         self._meta = meta
         self._manifest_files = []
+
+        # Handle encryption
+        if encryption_manager is None:
+            encryption_manager = PlaintextEncryptionManager.instance()
+
+        self._encryption_manager = encryption_manager
+
+        # Encrypt the output file if using StandardEncryptionManager
+        if isinstance(encryption_manager, StandardEncryptionManager):
+            encrypted_file = encryption_manager.encrypt(output_file)
+            self._output_file = encrypted_file.encrypting_output_file()
+            self._manifest_list_key_metadata = encrypted_file.key_metadata()
+        else:
+            self._output_file = output_file
+            self._manifest_list_key_metadata = None
 
     def __enter__(self) -> ManifestListWriter:
         """Open the writer for writing."""
@@ -1237,6 +1307,25 @@ class ManifestListWriter(ABC):
         self._writer.write_block([self.prepare_manifest(manifest_file) for manifest_file in manifest_files])
         return self
 
+    def to_manifest_list_file(self) -> ManifestListFile:
+        """Convert the writer to a ManifestListFile with encryption metadata.
+
+        Returns:
+            A ManifestListFile representing the written manifest list.
+        """
+        from pyiceberg.encryption.standard_encryption import StandardEncryptionManager
+
+        if isinstance(self._encryption_manager, StandardEncryptionManager) and self._manifest_list_key_metadata is not None:
+            # Note: File length would be added here for AES-GCM stream encryption
+            # For now, we're only encrypting the key metadata, not the file content
+
+            # Add the manifest list key metadata to the encryption manager
+            manifest_list_key_id = self._encryption_manager.add_manifest_list_key_metadata(self._manifest_list_key_metadata)
+
+            return ManifestListFile(self._output_file.location, manifest_list_key_id)
+        else:
+            return ManifestListFile(self._output_file.location, None)
+
 
 class ManifestListWriterV1(ManifestListWriter):
     def __init__(
@@ -1245,6 +1334,7 @@ class ManifestListWriterV1(ManifestListWriter):
         snapshot_id: int,
         parent_snapshot_id: int | None,
         compression: AvroCompressionCodec,
+        encryption_manager: Any | None = None,
     ):
         super().__init__(
             format_version=1,
@@ -1255,6 +1345,7 @@ class ManifestListWriterV1(ManifestListWriter):
                 "format-version": "1",
                 AVRO_CODEC_KEY: compression,
             },
+            encryption_manager=encryption_manager,
         )
 
     def prepare_manifest(self, manifest_file: ManifestFile) -> ManifestFile:
@@ -1274,6 +1365,7 @@ class ManifestListWriterV2(ManifestListWriter):
         parent_snapshot_id: int | None,
         sequence_number: int,
         compression: AvroCompressionCodec,
+        encryption_manager: Any | None = None,
     ):
         super().__init__(
             format_version=2,
@@ -1285,6 +1377,7 @@ class ManifestListWriterV2(ManifestListWriter):
                 "format-version": "2",
                 AVRO_CODEC_KEY: compression,
             },
+            encryption_manager=encryption_manager,
         )
         self._commit_snapshot_id = snapshot_id
         self._sequence_number = sequence_number
@@ -1319,12 +1412,15 @@ def write_manifest_list(
     parent_snapshot_id: int | None,
     sequence_number: int | None,
     avro_compression: AvroCompressionCodec,
+    encryption_manager: Any | None = None,
 ) -> ManifestListWriter:
     if format_version == 1:
-        return ManifestListWriterV1(output_file, snapshot_id, parent_snapshot_id, avro_compression)
+        return ManifestListWriterV1(output_file, snapshot_id, parent_snapshot_id, avro_compression, encryption_manager)
     elif format_version == 2:
         if sequence_number is None:
             raise ValueError(f"Sequence-number is required for V2 tables: {sequence_number}")
-        return ManifestListWriterV2(output_file, snapshot_id, parent_snapshot_id, sequence_number, avro_compression)
+        return ManifestListWriterV2(
+            output_file, snapshot_id, parent_snapshot_id, sequence_number, avro_compression, encryption_manager
+        )
     else:
         raise ValueError(f"Cannot write manifest list for table version: {format_version}")

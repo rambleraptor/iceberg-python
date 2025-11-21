@@ -289,6 +289,11 @@ class _SnapshotProducer(UpdateTableMetadata[U], Generic[U]):
         location_provider = self._transaction._table.location_provider()
         manifest_list_file_path = location_provider.new_metadata_location(file_name)
 
+        # Get encryption manager (for now, use PlaintextEncryptionManager)
+        from pyiceberg.encryption import PlaintextEncryptionManager
+
+        encryption_manager = PlaintextEncryptionManager.instance()
+
         with write_manifest_list(
             format_version=self._transaction.table_metadata.format_version,
             output_file=self._io.new_output(manifest_list_file_path),
@@ -296,8 +301,12 @@ class _SnapshotProducer(UpdateTableMetadata[U], Generic[U]):
             parent_snapshot_id=self._parent_snapshot_id,
             sequence_number=next_sequence_number,
             avro_compression=self._compression,
+            encryption_manager=encryption_manager,
         ) as writer:
             writer.add_manifests(new_manifests)
+
+        # Get the manifest list file with encryption metadata
+        manifest_list_file = writer.to_manifest_list_file()
 
         first_row_id: int | None = None
 
@@ -312,6 +321,7 @@ class _SnapshotProducer(UpdateTableMetadata[U], Generic[U]):
             summary=summary,
             schema_id=self._transaction.table_metadata.current_schema_id,
             first_row_id=first_row_id,
+            key_id=manifest_list_file.encryption_key_id,
         )
 
         add_snapshot_update = AddSnapshotUpdate(snapshot=snapshot)
