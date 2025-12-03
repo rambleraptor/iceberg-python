@@ -46,6 +46,7 @@ from pyiceberg.expressions import (
     Or,
     Reference,
 )
+from pyiceberg.encryption import EncryptionManager, PlaintextEncryptionManager
 from pyiceberg.expressions.visitors import (
     ResidualEvaluator,
     _InclusiveMetricsEvaluator,
@@ -1214,6 +1215,10 @@ class Table:
     def location(self) -> str:
         """Return the table's base location."""
         return self.metadata.location
+
+    @property
+    def encryption(self) -> EncryptionManager:
+        return PlaintextEncryptionManager()
 
     def location_provider(self) -> LocationProvider:
         """Return the table's location provider."""

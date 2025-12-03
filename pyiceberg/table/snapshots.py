@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import Field, PrivateAttr, model_serializer
 
 from pyiceberg.io import FileIO
-from pyiceberg.manifest import DataFile, DataFileContent, ManifestFile, _manifests
+from pyiceberg.manifest import BaseManifestListFile, DataFile, DataFileContent, ManifestFile, _manifests
 from pyiceberg.partitioning import UNPARTITIONED_PARTITION_SPEC, PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.utils.deprecated import deprecation_message
@@ -243,6 +243,7 @@ class Snapshot(IcebergBaseModel):
     sequence_number: int | None = Field(alias="sequence-number", default=INITIAL_SEQUENCE_NUMBER)
     timestamp_ms: int = Field(alias="timestamp-ms", default_factory=lambda: int(time.time() * 1000))
     manifest_list: str = Field(alias="manifest-list", description="Location of the snapshot's manifest list file")
+    manifest_list_key_id: str | None = Field(alias="manifest-list-key-id", default=None)
     summary: Summary | None = Field(default=None)
     schema_id: int | None = Field(alias="schema-id", default=None)
     first_row_id: int | None = Field(
@@ -278,7 +279,7 @@ class Snapshot(IcebergBaseModel):
 
     def manifests(self, io: FileIO) -> list[ManifestFile]:
         """Return the manifests for the given snapshot."""
-        return list(_manifests(io, self.manifest_list))
+        return list(_manifests(io, BaseManifestListFile(self.manifest_list, self.manifest_list_key_id)))
 
 
 class MetadataLogEntry(IcebergBaseModel):

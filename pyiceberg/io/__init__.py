@@ -33,11 +33,14 @@ from io import SEEK_SET
 from types import TracebackType
 from typing import (
     Protocol,
+    TYPE_CHECKING,
     runtime_checkable,
 )
 from urllib.parse import urlparse
 
 from pyiceberg.typedef import EMPTY_DICT, Properties
+if TYPE_CHECKING:
+    from pyiceberg.manifest import ManifestListFile
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +267,16 @@ class FileIO(ABC):
         Args:
             location (str): A URI or a path to a local file.
         """
+
+    def new_input_file(self, file: ManifestListFile) -> InputFile:
+        """Get an InputFile instance to read bytes from the file.
+
+        Args:
+            file (ManifestListFile): A ManifestListFile instance.
+        """
+        if file.encryption_key_id is not None:
+            raise ValueError(f"Cannot decrypt manifest list: {file.location} (use EncryptingFileIO)")
+        return self.new_input(file.location)
 
     @abstractmethod
     def new_output(self, location: str) -> OutputFile:

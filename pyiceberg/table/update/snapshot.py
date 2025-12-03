@@ -296,8 +296,11 @@ class _SnapshotProducer(UpdateTableMetadata[U], Generic[U]):
             parent_snapshot_id=self._parent_snapshot_id,
             sequence_number=next_sequence_number,
             avro_compression=self._compression,
+            encryption_manager=self._transaction._table.encryption,
         ) as writer:
             writer.add_manifests(new_manifests)
+
+        manifest_list_file = writer.to_manifest_list_file()
 
         first_row_id: int | None = None
 
@@ -307,7 +310,8 @@ class _SnapshotProducer(UpdateTableMetadata[U], Generic[U]):
         snapshot = Snapshot(
             snapshot_id=self._snapshot_id,
             parent_snapshot_id=self._parent_snapshot_id,
-            manifest_list=manifest_list_file_path,
+            manifest_list=manifest_list_file.location,
+            manifest_list_key_id=manifest_list_file.encryption_key_id,
             sequence_number=next_sequence_number,
             summary=summary,
             schema_id=self._transaction.table_metadata.current_schema_id,
