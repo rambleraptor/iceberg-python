@@ -18,29 +18,25 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Iterable
+from types import TracebackType
+from typing import TYPE_CHECKING, Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from pyiceberg.typedef import IcebergBaseModel
-
-from pyiceberg.io import FileIO, InputFile, OutputFile
+from pyiceberg.io import FileIO, InputFile, InputStream, OutputFile, OutputStream
 
 if TYPE_CHECKING:
-    from pyiceberg.manifest import ManifestListFile
     from pyiceberg.manifest import ManifestListFile
 
 
 class EncryptedInputFile(ABC):
     @property
     @abstractmethod
-    def encrypted_input_file(self) -> InputFile:
-        ...
+    def encrypted_input_file(self) -> InputFile: ...
 
     @property
     @abstractmethod
-    def key_metadata(self) -> NativeEncryptionKeyMetadata:
-        ...
+    def key_metadata(self) -> NativeEncryptionKeyMetadata: ...
 
 
 class BaseEncryptedInputFile(EncryptedInputFile):
@@ -62,22 +58,13 @@ class BaseEncryptedInputFile(EncryptedInputFile):
 
 class EncryptionManager(ABC):
     @abstractmethod
-    def decrypt(self, file: EncryptedInputFile) -> InputFile:
-        ...
+    def decrypt(self, file: EncryptedInputFile) -> InputFile: ...
 
     @abstractmethod
-    def encrypt(self, file: OutputFile) -> OutputFile:
-        ...
+    def encrypt(self, file: OutputFile) -> OutputFile: ...
 
 
 class PlaintextEncryptionManager(EncryptionManager):
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(PlaintextEncryptionManager, cls).__new__(cls)
-        return cls._instance
-
     def decrypt(self, file: EncryptedInputFile) -> InputFile:
         return file.encrypted_input_file
 
@@ -87,30 +74,24 @@ class PlaintextEncryptionManager(EncryptionManager):
 
 class EncryptionKeyMetadata(ABC):
     @abstractmethod
-    def buffer(self) -> bytes:
-        ...
+    def buffer(self) -> bytes: ...
 
     @abstractmethod
-    def copy(self) -> EncryptionKeyMetadata:
-        ...
+    def copy(self) -> EncryptionKeyMetadata: ...
 
 
 class NativeEncryptionKeyMetadata(EncryptionKeyMetadata):
     @abstractmethod
-    def encryption_key(self) -> bytes:
-        ...
+    def encryption_key(self) -> bytes: ...
 
     @abstractmethod
-    def aad_prefix(self) -> bytes:
-        ...
+    def aad_prefix(self) -> bytes: ...
 
     @abstractmethod
-    def file_length(self) -> int | None:
-        ...
+    def file_length(self) -> int | None: ...
 
     @abstractmethod
-    def copy_with_length(self, length: int) -> NativeEncryptionKeyMetadata:
-        ...
+    def copy_with_length(self, length: int) -> NativeEncryptionKeyMetadata: ...
 
 
 class NativeEncryptionOutputFile(OutputFile):
@@ -123,6 +104,7 @@ class NativeEncryptionOutputFile(OutputFile):
         super().__init__(output_file.location)
 
     def __len__(self) -> int:
+        """Length of the output file."""
         return len(self._output_file)
 
     def exists(self) -> bool:
@@ -156,7 +138,7 @@ class NativeEncryptionOutputFile(OutputFile):
                 aesgcm = AESGCM(self._key_metadata.encryption_key())
                 nonce = os.urandom(12)
                 ciphertext = aesgcm.encrypt(nonce, self._buffer, self._key_metadata.aad_prefix())
-                
+
                 # Write nonce + ciphertext (which includes tag)
                 self._stream.write(nonce)
                 self._stream.write(ciphertext)
@@ -166,7 +148,9 @@ class NativeEncryptionOutputFile(OutputFile):
         def __enter__(self) -> OutputStream:
             return self
 
-        def __exit__(self, exctype: type[BaseException] | None, excinst: BaseException | None, exctb: TracebackType | None) -> None:
+        def __exit__(
+            self, exctype: type[BaseException] | None, excinst: BaseException | None, exctb: TracebackType | None
+        ) -> None:
             self.close()
 
 
@@ -180,6 +164,7 @@ class DecryptingInputFile(InputFile):
         super().__init__(input_file.location)
 
     def __len__(self) -> int:
+        """Length of the input file."""
         return len(self._input_file)
 
     def exists(self) -> bool:
@@ -206,10 +191,10 @@ class DecryptingInputFile(InputFile):
                 content = self._stream.read()
                 if len(content) < 12:
                     raise ValueError("File too short to contain nonce")
-                
+
                 nonce = content[:12]
                 ciphertext = content[12:]
-                
+
                 aesgcm = AESGCM(self._key_metadata.encryption_key())
                 self._decrypted_content = aesgcm.decrypt(nonce, ciphertext, self._key_metadata.aad_prefix())
 
@@ -217,11 +202,11 @@ class DecryptingInputFile(InputFile):
             self._read_and_decrypt()
             assert self._decrypted_content is not None
             if size == 0:
-                data = self._decrypted_content[self._pos:]
+                data = self._decrypted_content[self._pos :]
                 self._pos = len(self._decrypted_content)
                 return data
             else:
-                data = self._decrypted_content[self._pos:self._pos + size]
+                data = self._decrypted_content[self._pos : self._pos + size]
                 self._pos += size
                 return data
 
@@ -245,7 +230,9 @@ class DecryptingInputFile(InputFile):
         def __enter__(self) -> InputStream:
             return self
 
-        def __exit__(self, exctype: type[BaseException] | None, excinst: BaseException | None, exctb: TracebackType | None) -> None:
+        def __exit__(
+            self, exctype: type[BaseException] | None, excinst: BaseException | None, exctb: TracebackType | None
+        ) -> None:
             self.close()
 
 
@@ -282,7 +269,7 @@ class StandardKeyMetadata(NativeEncryptionKeyMetadata):
 
 
 class StandardEncryptionManager(EncryptionManager):
-    def __init__(self, table_key_id: str, data_key_length: int, kms_client=None):
+    def __init__(self, table_key_id: str, data_key_length: int, kms_client: Any | None = None):
         self.table_key_id = table_key_id
         self.data_key_length = data_key_length
         self.kms_client = kms_client
@@ -298,14 +285,13 @@ class StandardEncryptionManager(EncryptionManager):
         # In a real implementation, we would wrap this FEK with the KEK from KMS
         # For now, we'll just use the FEK as is (simulating a "direct" key or simple wrapping)
         # TODO: Implement actual key wrapping using self.kms_client
-        wrapped_fek = fek 
-        
+
         # Create key metadata
         # AAD prefix is usually empty or specific to the file
-        aad_prefix = os.urandom(16) # Random AAD for now
-        
+        aad_prefix = os.urandom(16)  # Random AAD for now
+
         key_metadata = StandardKeyMetadata(fek, aad_prefix)
-        
+
         return NativeEncryptionOutputFile(file, key_metadata)
 
     def add_manifest_list_key_metadata(self, key_metadata: NativeEncryptionKeyMetadata) -> str:
@@ -313,13 +299,14 @@ class StandardEncryptionManager(EncryptionManager):
         # In the Java PR, this encrypts the key metadata and stores it.
         # Here we'll just generate a random ID.
         import base64
-        return base64.b64encode(os.urandom(16)).decode('utf-8')
+
+        return base64.b64encode(os.urandom(16)).decode("utf-8")
 
 
 def decrypt_manifest_list_key_metadata(manifest_list: ManifestListFile, em: EncryptionManager) -> bytes:
     if not isinstance(em, StandardEncryptionManager):
         raise ValueError("Snapshot key metadata encryption requires a StandardEncryptionManager")
-    
+
     # Placeholder: In a real implementation, this would decrypt the key metadata using the EM
     # For now, we assume we can't fully implement it without the KMS and crypto libraries
     return b""  # Return empty bytes or throw
@@ -357,7 +344,6 @@ class EncryptingFileIO(FileIO):
             # We need a way to construct it from bytes.
             # For now, let's create a dummy metadata with the buffer.
             # TODO: Parse the buffer properly
-            key_metadata = StandardKeyMetadata(key_metadata_buffer, b"") 
+            key_metadata = StandardKeyMetadata(key_metadata_buffer, b"")
             return self._em.decrypt(BaseEncryptedInputFile(self._io.new_input(file.location), key_metadata))
         return self.new_input(file.location)
-

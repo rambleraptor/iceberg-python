@@ -36,6 +36,7 @@ from pydantic import Field
 from sortedcontainers import SortedList
 
 import pyiceberg.expressions.parser as parser
+from pyiceberg.encryption import EncryptionManager, PlaintextEncryptionManager
 from pyiceberg.expressions import (
     AlwaysFalse,
     AlwaysTrue,
@@ -46,7 +47,6 @@ from pyiceberg.expressions import (
     Or,
     Reference,
 )
-from pyiceberg.encryption import EncryptionManager, PlaintextEncryptionManager
 from pyiceberg.expressions.visitors import (
     ResidualEvaluator,
     _InclusiveMetricsEvaluator,

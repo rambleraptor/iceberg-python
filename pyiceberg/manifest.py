@@ -35,6 +35,13 @@ from pydantic_core import to_json
 from pyiceberg.avro.codecs import AVRO_CODEC_KEY, AvroCompressionCodec
 from pyiceberg.avro.file import AvroFile, AvroOutputFile
 from pyiceberg.conversions import to_bytes
+from pyiceberg.encryption import (
+    EncryptionManager,
+    NativeEncryptionKeyMetadata,
+    PlaintextEncryptionManager,
+    StandardEncryptionManager,
+    decrypt_manifest_list_key_metadata,
+)
 from pyiceberg.exceptions import ValidationError
 from pyiceberg.io import FileIO, InputFile, OutputFile
 from pyiceberg.partitioning import PartitionSpec
@@ -51,14 +58,6 @@ from pyiceberg.types import (
     PrimitiveType,
     StringType,
     StructType,
-)
-
-from pyiceberg.encryption import (
-    EncryptionManager,
-    NativeEncryptionKeyMetadata,
-    PlaintextEncryptionManager,
-    StandardEncryptionManager,
-    decrypt_manifest_list_key_metadata,
 )
 
 UNASSIGNED_SEQ = -1
@@ -882,7 +881,13 @@ class ManifestFile(Record):
 _manifest_cache: LRUCache[Any, tuple[ManifestFile, ...]] = LRUCache(maxsize=128)
 
 
-@cached(cache=_manifest_cache, key=lambda io, manifest_list: hashkey(manifest_list.location if isinstance(manifest_list, ManifestListFile) else manifest_list), lock=threading.RLock())
+@cached(
+    cache=_manifest_cache,
+    key=lambda io, manifest_list: hashkey(
+        manifest_list.location if isinstance(manifest_list, ManifestListFile) else manifest_list
+    ),
+    lock=threading.RLock(),
+)
 def _manifests(io: FileIO, manifest_list: str | ManifestListFile) -> tuple[ManifestFile, ...]:
     """Read and cache manifests from the given manifest list, returning a tuple to prevent modification."""
     if isinstance(manifest_list, str):
@@ -1203,20 +1208,18 @@ def write_manifest(
     else:
         raise ValueError(f"Cannot write manifest for table version: {format_version}")
 
+
 class ManifestListFile(ABC):
     @property
     @abstractmethod
-    def location(self) -> str:
-        ...
+    def location(self) -> str: ...
 
     @property
     @abstractmethod
-    def encryption_key_id(self) -> str | None:
-        ...
+    def encryption_key_id(self) -> str | None: ...
 
     @abstractmethod
-    def decrypt_key_metadata(self, em: EncryptionManager) -> bytes:
-        ...
+    def decrypt_key_metadata(self, em: EncryptionManager) -> bytes: ...
 
 
 class BaseManifestListFile(ManifestListFile):
@@ -1237,6 +1240,7 @@ class BaseManifestListFile(ManifestListFile):
 
     def decrypt_key_metadata(self, em: EncryptionManager) -> bytes:
         return decrypt_manifest_list_key_metadata(self, em)
+
 
 class ManifestListWriter(ABC):
     _format_version: TableVersion
@@ -1276,7 +1280,6 @@ class ManifestListWriter(ABC):
         else:
             self._output_file = output_file
             self._manifest_list_key_metadata = None
-
 
     def __enter__(self) -> ManifestListWriter:
         """Open the writer for writing."""
@@ -1318,7 +1321,6 @@ class ManifestListWriter(ABC):
             return BaseManifestListFile(self._output_file.location, manifest_list_key_id)
         else:
             return BaseManifestListFile(self._output_file.location, None)
-
 
 
 class ManifestListWriterV1(ManifestListWriter):

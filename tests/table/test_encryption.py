@@ -15,9 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 import os
-from unittest.mock import MagicMock
+from types import TracebackType
+from typing import cast
 
 import pytest
+from cryptography.exceptions import InvalidTag
 
 from pyiceberg.encryption import (
     BaseEncryptedInputFile,
@@ -25,75 +27,87 @@ from pyiceberg.encryption import (
     StandardEncryptionManager,
     StandardKeyMetadata,
 )
-from pyiceberg.io import InputFile, OutputFile
+from pyiceberg.io import InputFile, InputStream, OutputFile, OutputStream
 
 
 class InMemoryOutputFile(OutputFile):
+    _buffer: bytearray
+
     def __init__(self, location: str):
         super().__init__(location)
         self._buffer = bytearray()
 
-    def create(self, overwrite: bool = False):
+    def create(self, overwrite: bool = False) -> OutputStream:
         return self._InMemoryOutputStream(self._buffer)
-    
-    def to_input_file(self):
+
+    def to_input_file(self) -> InputFile:
         return InMemoryInputFile(self.location, bytes(self._buffer))
-    
-    def exists(self):
+
+    def exists(self) -> bool:
         return True
-    
-    def __len__(self):
+
+    def __len__(self) -> int:
         return len(self._buffer)
 
-    class _InMemoryOutputStream:
-        def __init__(self, buffer):
+    class _InMemoryOutputStream(OutputStream):
+        _buffer: bytearray
+        _closed: bool
+
+        def __init__(self, buffer: bytearray):
             self._buffer = buffer
             self._closed = False
 
-        def write(self, b):
+        def write(self, b: bytes) -> int:
             self._buffer.extend(b)
             return len(b)
 
-        def close(self):
+        def close(self) -> None:
             self._closed = True
 
-        def __enter__(self):
+        def __enter__(self) -> OutputStream:
             return self
 
-        def __exit__(self, exc_type, exc_val, exc_tb):
+        def __exit__(
+            self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
+        ) -> None:
             self.close()
 
 
 class InMemoryInputFile(InputFile):
+    _content: bytes
+
     def __init__(self, location: str, content: bytes):
         super().__init__(location)
         self._content = content
 
-    def open(self, seekable: bool = True):
+    def open(self, seekable: bool = True) -> InputStream:
         return self._InMemoryInputStream(self._content)
-    
-    def exists(self):
+
+    def exists(self) -> bool:
         return True
-    
-    def __len__(self):
+
+    def __len__(self) -> int:
         return len(self._content)
 
-    class _InMemoryInputStream:
-        def __init__(self, content):
+    class _InMemoryInputStream(InputStream):
+        _content: bytes
+        _pos: int
+
+        def __init__(self, content: bytes):
             self._content = content
             self._pos = 0
 
-        def read(self, size: int = -1):
+        def read(self, size: int = -1) -> bytes:
             if size == -1:
-                data = self._content[self._pos:]
+                data = self._content[self._pos :]
                 self._pos = len(self._content)
                 return data
             else:
-                data = self._content[self._pos:self._pos + size]
+                data = self._content[self._pos : self._pos + size]
                 self._pos += size
                 return data
 
-        def seek(self, offset, whence=0):
+        def seek(self, offset: int, whence: int = 0) -> int:
             if whence == 0:
                 self._pos = offset
             elif whence == 1:
@@ -102,68 +116,72 @@ class InMemoryInputFile(InputFile):
                 self._pos = len(self._content) + offset
             return self._pos
 
-        def tell(self):
+        def tell(self) -> int:
             return self._pos
 
-        def close(self):
+        def close(self) -> None:
             pass
 
-        def __enter__(self):
+        def __enter__(self) -> InputStream:
             return self
 
-        def __exit__(self, exc_type, exc_val, exc_tb):
+        def __exit__(
+            self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
+        ) -> None:
             self.close()
 
 
-def test_encryption_round_trip():
+def test_encryption_round_trip() -> None:
     # Setup
     output_file = InMemoryOutputFile("memory://test.enc")
     em = StandardEncryptionManager("key_id", 16)
-    
+
     # Encrypt
     encrypted_output = em.encrypt(output_file)
     with encrypted_output.create() as out:
         out.write(b"Hello, World!")
-    
+
     # Verify underlying file has content (nonce + ciphertext)
     # 12 bytes nonce + 13 bytes plaintext + 16 bytes tag = 41 bytes
     assert len(output_file._buffer) == 12 + 13 + 16
-    
+
     # Decrypt
     # We need to reconstruct the input file with the key metadata
     # In a real scenario, this metadata comes from the manifest list
     # Here we can grab it from the encrypted_output object since we just created it
-    key_metadata = encrypted_output._key_metadata
-    
+    encrypted_file = cast(NativeEncryptionOutputFile, encrypted_output)
+    key_metadata = encrypted_file._key_metadata
+
     input_file = output_file.to_input_file()
     encrypted_input = BaseEncryptedInputFile(input_file, key_metadata)
-    
+
     decrypted_input = em.decrypt(encrypted_input)
-    
+
     with decrypted_input.open() as inp:
         content = inp.read()
         assert content == b"Hello, World!"
 
 
-def test_encryption_invalid_key():
+def test_encryption_invalid_key() -> None:
     output_file = InMemoryOutputFile("memory://test.enc")
     em = StandardEncryptionManager("key_id", 16)
-    
+
     # Encrypt
     encrypted_output = em.encrypt(output_file)
     with encrypted_output.create() as out:
         out.write(b"Secret Data")
-        
+
     # Try to decrypt with WRONG key
-    wrong_key = os.urandom(16) # AES-128
-    wrong_metadata = StandardKeyMetadata(wrong_key, encrypted_output._key_metadata.aad_prefix())
-    
+    wrong_key = os.urandom(16)  # AES-128
+    encrypted_file = cast(NativeEncryptionOutputFile, encrypted_output)
+    wrong_metadata = StandardKeyMetadata(wrong_key, encrypted_file._key_metadata.aad_prefix())
+
     input_file = output_file.to_input_file()
     encrypted_input = BaseEncryptedInputFile(input_file, wrong_metadata)
-    
+
     # Decrypting should fail (tag mismatch)
     decrypted_input = em.decrypt(encrypted_input)
-    
-    with pytest.raises(Exception): # Cryptography raises InvalidTag
+
+    with pytest.raises(InvalidTag):  # Cryptography raises InvalidTag
         with decrypted_input.open() as inp:
             inp.read()

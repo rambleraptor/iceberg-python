@@ -32,13 +32,14 @@ from abc import ABC, abstractmethod
 from io import SEEK_SET
 from types import TracebackType
 from typing import (
-    Protocol,
     TYPE_CHECKING,
+    Protocol,
     runtime_checkable,
 )
 from urllib.parse import urlparse
 
 from pyiceberg.typedef import EMPTY_DICT, Properties
+
 if TYPE_CHECKING:
     from pyiceberg.manifest import ManifestListFile
 
