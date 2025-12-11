@@ -38,6 +38,7 @@ from pyiceberg.conversions import to_bytes
 from pyiceberg.encryption import (
     EncryptionManager,
     NativeEncryptionKeyMetadata,
+    NativeEncryptionOutputFile,
     PlaintextEncryptionManager,
     StandardEncryptionManager,
     decrypt_manifest_list_key_metadata,

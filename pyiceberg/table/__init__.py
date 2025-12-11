@@ -36,7 +36,12 @@ from pydantic import Field
 from sortedcontainers import SortedList
 
 import pyiceberg.expressions.parser as parser
-from pyiceberg.encryption import EncryptionManager, PlaintextEncryptionManager
+from pyiceberg.encryption import (
+    EncryptionManager,
+    MockKMSClient,
+    PlaintextEncryptionManager,
+    StandardEncryptionManager,
+)
 from pyiceberg.expressions import (
     AlwaysFalse,
     AlwaysTrue,
@@ -243,6 +248,10 @@ class TableProperties:
 
     MIN_SNAPSHOTS_TO_KEEP = "history.expire.min-snapshots-to-keep"
     MIN_SNAPSHOTS_TO_KEEP_DEFAULT = 1
+
+    ENCRYPTION_TABLE_KEY = "encryption.table-key"
+    ENCRYPTION_DATA_KEY_LENGTH = "encryption.key-length"
+    ENCRYPTION_DATA_KEY_LENGTH_DEFAULT = 32  # AES-256
 
 
 class Transaction:
@@ -1216,8 +1225,18 @@ class Table:
         """Return the table's base location."""
         return self.metadata.location
 
-    @property
+    @cached_property
     def encryption(self) -> EncryptionManager:
+        if table_key := self.metadata.properties.get(TableProperties.ENCRYPTION_TABLE_KEY):
+            key_length = int(
+                self.metadata.properties.get(
+                    TableProperties.ENCRYPTION_DATA_KEY_LENGTH, TableProperties.ENCRYPTION_DATA_KEY_LENGTH_DEFAULT
+                )
+            )
+            # In a real implementation, a KMS client would be loaded based on table properties.
+            # For this implementation, we use a mock client.
+            kms_client = MockKMSClient()
+            return StandardEncryptionManager(table_key_id=table_key, data_key_length=key_length, kms_client=kms_client)
         return PlaintextEncryptionManager()
 
     def location_provider(self) -> LocationProvider:
