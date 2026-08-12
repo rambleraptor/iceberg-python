@@ -16,13 +16,14 @@
 # under the License.
 from __future__ import annotations
 
+import importlib
 import math
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from copy import copy
 from enum import Enum
-from types import TracebackType
+from types import ModuleType, TracebackType
 from typing import (
     Any,
     Literal,
@@ -984,16 +985,63 @@ def _manifests(io: FileIO, manifest_list: str) -> tuple[ManifestFile, ...]:
     return tuple(_manifest_cache.get_or_cache(manifest_file) for manifest_file in manifest_files)
 
 
-def read_manifest_list(input_file: InputFile) -> Iterator[ManifestFile]:
-    """
-    Read the manifests from the manifest list.
+def _rust_manifest_module() -> ModuleType | None:
+    try:
+        return importlib.import_module("pyiceberg_core.manifest")
+    except ImportError:
+        return None
 
-    Args:
-        input_file: The input file where the stream can be read from.
 
-    Returns:
-        An iterator of ManifestFiles that are part of the list.
-    """
+def _partition_summaries_from_rust(entry: Any) -> list[PartitionFieldSummary] | None:
+    try:
+        summaries = entry.partitions
+    except BaseException as exc:
+        # partitions is optional, but pyiceberg-core 0.10.x unwraps it unconditionally and
+        # panics when it is absent. pyo3 raises PanicException, which is not an Exception.
+        if type(exc).__name__ != "PanicException":
+            raise
+        return None
+
+    return [
+        PartitionFieldSummary.from_args(
+            contains_null=summary.contains_null,
+            contains_nan=summary.contains_nan,
+            lower_bound=summary.lower_bound,
+            upper_bound=summary.upper_bound,
+        )
+        for summary in summaries
+    ]
+
+
+def _manifest_file_from_rust(entry: Any) -> ManifestFile:
+    return ManifestFile.from_args(
+        manifest_path=entry.manifest_path,
+        manifest_length=entry.manifest_length,
+        partition_spec_id=entry.partition_spec_id,
+        content=ManifestContent(entry.content),
+        sequence_number=entry.sequence_number,
+        min_sequence_number=entry.min_sequence_number,
+        added_snapshot_id=entry.added_snapshot_id,
+        added_files_count=entry.added_files_count,
+        existing_files_count=entry.existing_files_count,
+        deleted_files_count=entry.deleted_files_count,
+        added_rows_count=entry.added_rows_count,
+        existing_rows_count=entry.existing_rows_count,
+        deleted_rows_count=entry.deleted_rows_count,
+        partitions=_partition_summaries_from_rust(entry),
+        key_metadata=entry.key_metadata,
+    )
+
+
+def _read_manifest_list_rust(input_file: InputFile, rust_manifest: ModuleType) -> Iterator[ManifestFile]:
+    with input_file.open() as stream:
+        manifest_list = rust_manifest.read_manifest_list(stream.read())
+
+    for entry in manifest_list.entries():
+        yield _manifest_file_from_rust(entry)
+
+
+def _read_manifest_list_python(input_file: InputFile) -> Iterator[ManifestFile]:
     with AvroFile[ManifestFile](
         input_file,
         MANIFEST_LIST_FILE_SCHEMAS[DEFAULT_READ_VERSION],
@@ -1001,6 +1049,25 @@ def read_manifest_list(input_file: InputFile) -> Iterator[ManifestFile]:
         read_enums={517: ManifestContent},
     ) as reader:
         yield from reader
+
+
+def read_manifest_list(input_file: InputFile) -> Iterator[ManifestFile]:
+    """
+    Read the manifests from the manifest list.
+
+    Decoding is delegated to pyiceberg-core when it is installed, and falls back to
+    the pure-Python Avro reader otherwise.
+
+    Args:
+        input_file: The input file where the stream can be read from.
+
+    Returns:
+        An iterator of ManifestFiles that are part of the list.
+    """
+    if (rust_manifest := _rust_manifest_module()) is not None:
+        yield from _read_manifest_list_rust(input_file, rust_manifest)
+    else:
+        yield from _read_manifest_list_python(input_file)
 
 
 def _inherit_from_manifest(entry: ManifestEntry, manifest: ManifestFile) -> ManifestEntry:

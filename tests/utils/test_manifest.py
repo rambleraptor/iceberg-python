@@ -22,6 +22,7 @@ from typing import Any
 
 import fastavro
 import pytest
+from pytest_mock import MockerFixture
 
 import pyiceberg.manifest as manifest_module
 from pyiceberg.avro.codecs import AvroCompressionCodec
@@ -1188,3 +1189,83 @@ def test_negative_manifest_cache_size_raises_value_error(monkeypatch: pytest.Mon
     finally:
         monkeypatch.delenv("PYICEBERG_MANIFEST_CACHE_SIZE", raising=False)
         importlib.reload(manifest_module)
+
+
+def _assert_manifest_files_equal(actual: ManifestFile, expected: ManifestFile) -> None:
+    # ManifestFile.__eq__ only compares the manifest path, so compare all the fields
+    assert actual._data == expected._data
+
+
+@pytest.mark.parametrize("format_version", [1, 2])
+def test_read_manifest_list_rust_matches_python(
+    generated_manifest_file_file_v1: str,
+    generated_manifest_file_file_v2: str,
+    format_version: TableVersion,
+) -> None:
+    """Test that the pyiceberg-core reader produces the same ManifestFiles as the pure-Python one."""
+    path = generated_manifest_file_file_v1 if format_version == 1 else generated_manifest_file_file_v2
+    io = PyArrowFileIO()
+
+    rust_manifest = manifest_module._rust_manifest_module()
+    assert rust_manifest is not None, "pyiceberg-core is required for this test"
+
+    from_rust = list(manifest_module._read_manifest_list_rust(io.new_input(path), rust_manifest))
+    from_python = list(manifest_module._read_manifest_list_python(io.new_input(path)))
+
+    assert len(from_rust) == len(from_python) == 1
+    _assert_manifest_files_equal(from_rust[0], from_python[0])
+
+
+def test_read_manifest_list_without_partition_summaries() -> None:
+    """Test that a manifest list entry without partition summaries reads back as None."""
+    io = load_file_io()
+    manifest_file = ManifestFile.from_args(
+        manifest_path="/tmp/no-partitions.avro",
+        manifest_length=7989,
+        partition_spec_id=0,
+        content=ManifestContent.DATA,
+        sequence_number=3,
+        min_sequence_number=3,
+        added_snapshot_id=9182715666859759686,
+        added_files_count=3,
+        existing_files_count=0,
+        deleted_files_count=0,
+        added_rows_count=237993,
+        existing_rows_count=0,
+        deleted_rows_count=0,
+        partitions=None,
+        key_metadata=None,
+    )
+
+    with TemporaryDirectory() as tmp_dir:
+        path = tmp_dir + "/manifest-list.avro"
+        with write_manifest_list(
+            format_version=2,
+            output_file=io.new_output(path),
+            snapshot_id=25,
+            parent_snapshot_id=19,
+            sequence_number=3,
+            avro_compression="null",
+        ) as writer:
+            writer.add_manifests([manifest_file])
+
+        (from_rust,) = read_manifest_list(io.new_input(path))
+        (from_python,) = manifest_module._read_manifest_list_python(io.new_input(path))
+
+    assert from_rust.partitions is None
+    _assert_manifest_files_equal(from_rust, from_python)
+
+
+def test_read_manifest_list_falls_back_without_pyiceberg_core(
+    generated_manifest_file_file_v2: str, mocker: MockerFixture
+) -> None:
+    """Test that the pure-Python Avro reader is used when pyiceberg-core is not installed."""
+    mocker.patch.dict("sys.modules", {"pyiceberg_core.manifest": None})
+    assert manifest_module._rust_manifest_module() is None
+
+    rust_reader = mocker.patch.object(manifest_module, "_read_manifest_list_rust")
+
+    (manifest_file,) = read_manifest_list(PyArrowFileIO().new_input(generated_manifest_file_file_v2))
+
+    rust_reader.assert_not_called()
+    assert manifest_file.manifest_length == 7989
